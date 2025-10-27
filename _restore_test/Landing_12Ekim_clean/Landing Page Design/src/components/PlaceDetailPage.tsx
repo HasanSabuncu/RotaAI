@@ -6,7 +6,7 @@ import { Card, CardContent } from './ui/card';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
-import { fetchPlace } from '../lib/api';
+import { fetchPlace, toApiUrl } from '../lib/api';
 import type { PlaceDetail } from './types/places';
 
 interface PlaceDetailPageProps {
@@ -122,7 +122,8 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
       ? ((data as any).durationTr ?? t.durationFallback)
       : ((data as any).durationEn ?? t.durationFallback);
 
-  const photoUrl = data.photoUrl || placeData?.imageUrl || FALLBACK_IMG;
+  // BURASI GÜNCEL: göreli URL'yi kökle, yoksa fallback kullan
+  const photoUrl = toApiUrl(data.photoUrl || placeData?.imageUrl) || FALLBACK_IMG;
 
   // Açık/kapalı
   const isOpen = typeof data.openingNow === 'boolean' ? data.openingNow : undefined;
@@ -182,7 +183,7 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
               </Badge>
               <div className="flex items-center gap-1">
                 <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                <span>{data.rating?.toFixed?.(1) ?? data.rating}</span>
+                <span>{(data.rating as any)?.toFixed?.(1) ?? data.rating}</span>
                 {typeof data.userRatingsTotal === 'number' && (
                   <span className="text-gray-200">
                     {t.reviewsCount(data.userRatingsTotal)}
@@ -256,10 +257,8 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                 <h3 className="text-gray-900 mb-4">{t.about}</h3>
                 <p className="text-gray-600 leading-relaxed">
                   {language === 'TR'
-                    ? (data.descriptionTr ??
-                       'Bu yer hakkında ayrıntılı bilgi yakında eklenecek.')
-                    : (data.descriptionEn ??
-                       'Detailed information about this place will be added soon.')}
+                    ? (data as any).descriptionTr ?? 'Bu yer hakkında ayrıntılı bilgi yakında eklenecek.'
+                    : (data as any).descriptionEn ?? 'Detailed information about this place will be added soon.'}
                 </p>
               </CardContent>
             </Card>
@@ -272,31 +271,11 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                   <Button variant="link">{t.allReviews}</Button>
                 </div>
                 <div className="space-y-6">
-                  {mockReviews.map((review) => (
-                    <div key={review.id} className="border-b border-gray-100 last:border-0 pb-6 last:pb-0">
-                      <div className="flex items-start gap-3">
-                        <Avatar>
-                          <AvatarFallback>{review.author[0]}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-gray-900">{review.author}</span>
-                            <span className="text-gray-500">
-                              {language === 'TR' ? review.dateTR : review.dateEN}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 mb-2">
-                            {Array.from({ length: review.rating }).map((_, i) => (
-                              <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                            ))}
-                          </div>
-                          <p className="text-gray-600">
-                            {language === 'TR' ? review.commentTR : review.commentEN}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  {[/* mock reviews */].length === 0 ? (
+                    <p className="text-gray-500">
+                      {language === 'TR' ? 'Yorumlar yakında.' : 'Reviews coming soon.'}
+                    </p>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>
@@ -313,7 +292,7 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                     <div className="flex items-start gap-3">
                       <Phone className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div>
-                        <p className="text-gray-600">{data.phone || t.noPhone}</p>
+                        <p className="text-gray-600">{(data as any).phone || t.noPhone}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -329,9 +308,7 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                         {typeof isOpen === 'boolean' && (
                           <Badge
                             variant="outline"
-                            className={`mt-1 ${
-                              isOpen ? 'text-green-600 border-green-600' : 'text-red-600 border-red-600'
-                            }`}
+                            className={`mt-1 ${isOpen ? 'text-green-600 border-green-600' : 'text-red-600 border-red-600'}`}
                           >
                             {isOpen ? t.openNow : t.closedNow}
                           </Badge>

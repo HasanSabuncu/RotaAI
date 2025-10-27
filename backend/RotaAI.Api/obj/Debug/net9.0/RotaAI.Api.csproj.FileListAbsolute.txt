@@ -25,3 +25,4 @@ C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\refint\RotaAI.Api.dll
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.pdb
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.genruntimeconfig.cache
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\ref\RotaAI.Api.dll
+C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.sourcelink.json

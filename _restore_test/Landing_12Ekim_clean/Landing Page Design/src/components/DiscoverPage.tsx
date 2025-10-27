@@ -10,7 +10,7 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import { AnimatedSection } from './AnimatedSection';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { fetchMuseums } from '../lib/api';
+import { fetchMuseums, toApiUrl } from '../lib/api';
 import type { PlaceListItem } from './types/places';
 
 interface DiscoverPageProps {
@@ -329,7 +329,7 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
                                 className="w-full h-full"
                               >
                                 <ImageWithFallback
-                                  src={place.imageUrl}
+                                  src={toApiUrl(place.imageUrl)}
                                   alt={displayName}
                                   className="w-full h-full object-cover"
                                 />
