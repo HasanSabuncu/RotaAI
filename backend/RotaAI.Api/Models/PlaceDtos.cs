@@ -13,6 +13,15 @@ public sealed class PlaceListItemDto
     public string DurationEn { get; set; } = "2 hours";
 }
 
+public sealed class PlaceReviewDto
+{
+    public string? AuthorName { get; set; }
+    public double Rating { get; set; }
+    public string? RelativeTime { get; set; }
+    public string? Text { get; set; }
+    public string? ProfilePhotoUrl { get; set; }
+}
+
 public sealed class PlaceDetailDto
 {
     public string PlaceId { get; set; } = default!;
@@ -26,9 +35,16 @@ public sealed class PlaceDetailDto
     public List<string>? WeekdayText { get; set; }
     public string? Phone { get; set; }
     public string? Website { get; set; }
-    public string? EditorialSummary { get; set; }
+
+    // HAKKINDA
+    public string? DescriptionTr { get; set; }     // editorial_summary (TR)
+    public string? DescriptionEn { get; set; }     // editorial_summary (EN)
+
     public string PhotoUrl { get; set; } = default!;
     public string City { get; set; } = "İzmir";
     public string District { get; set; } = "";
     public string MainCategory { get; set; } = "Müzeler";
+
+    // İlk 3 yorum
+    public List<PlaceReviewDto>? Reviews { get; set; }
 }

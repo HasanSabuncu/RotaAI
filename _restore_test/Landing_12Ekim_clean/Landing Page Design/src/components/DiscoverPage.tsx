@@ -25,16 +25,99 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
   const [aiFilter, setAiFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // NEW: backend’ten doldurulan liste + loading
+  // backend’ten gelen liste + loading
   const [places, setPlaces] = useState<PlaceListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // ---------- KONUMA GÖRE VERİ ÇEKME ----------
   useEffect(() => {
-    // kullanıcı konumu yoksa backend İzmir merkezden mesafe hesaplıyor
-    fetchMuseums()
-      .then((data) => setPlaces(data))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    const BORNOVA_CENTER = {
+      lat: 38.4622,
+      lng: 27.2160,
+    };
+
+    const getUserLocation = (): Promise<{ lat: number; lng: number } | null> => {
+      if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+        return Promise.resolve(null);
+      }
+
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            console.log('[RotaAI][Geo][Discover] position:', {
+              latitude,
+              longitude,
+              accuracy,
+            });
+
+            const useFallback = !accuracy || accuracy > 1000;
+
+            if (useFallback) {
+              console.warn(
+                '[RotaAI][Geo][Discover] accuracy kötü, Bornova fallback kullanılacak'
+              );
+              resolve({
+                lat: BORNOVA_CENTER.lat,
+                lng: BORNOVA_CENTER.lng,
+              });
+            } else {
+              resolve({
+                lat: latitude,
+                lng: longitude,
+              });
+            }
+          },
+          (err) => {
+            console.warn(
+              '[RotaAI][Geo][Discover] hata, Bornova fallback kullanılıyor:',
+              err
+            );
+            resolve({
+              lat: BORNOVA_CENTER.lat,
+              lng: BORNOVA_CENTER.lng,
+            });
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 600000,
+          }
+        );
+      });
+    };
+
+    const loadPlaces = async () => {
+      try {
+        setLoading(true);
+
+        const location = await getUserLocation();
+
+        const data = location
+          ? await fetchMuseums(location.lat, location.lng)
+          : await fetchMuseums(BORNOVA_CENTER.lat, BORNOVA_CENTER.lng);
+
+        if (!cancelled) {
+          setPlaces(data);
+        }
+      } catch (e) {
+        console.error('Museums fetch error', e);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPlaces();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+  // -------------------------------------------
 
   const translations = {
     TR: {
@@ -53,7 +136,7 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
       },
       distance: 'Mesafe',
       rating: 'Değerlendirme',
-      aiFilter: 'AI\'ye Bırak',
+      aiFilter: "AI'ye Bırak",
       aiPlaceholder: 'Örn: macera, huzur, eğlence...',
       viewDetails: 'Detaylara Git',
       km: 'km',
@@ -99,9 +182,9 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
   ];
 
   const toggleCategory = (categoryId: string) => {
-    setSelectedCategories(prev =>
+    setSelectedCategories((prev) =>
       prev.includes(categoryId)
-        ? prev.filter(c => c !== categoryId)
+        ? prev.filter((c) => c !== categoryId)
         : [...prev, categoryId]
     );
   };
@@ -114,10 +197,10 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
     setSearchQuery('');
   };
 
-  // NEW: backend alan adlarına göre filtre
-  const filteredPlaces = places.filter(place => {
+  // backend alanlarına göre filtre
+  const filteredPlaces = places.filter((place) => {
     if (selectedCategories.length > 0 && !selectedCategories.includes(place.category)) return false;
-    if (place.distanceKm > distanceRange[0]) return false;
+    if (place.distanceKm > distanceRange[0]) return false; // <-- slider artık kullanıcı konumuna göre
     if (place.rating < minRating) return false;
     if (searchQuery) {
       const s = searchQuery.toLowerCase();
@@ -284,7 +367,7 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
               </Button>
             </div>
 
-            {/* Basit yükleniyor durumu */}
+            {/* Yükleniyor state */}
             {loading && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {[...Array(6)].map((_, i) => (
@@ -334,9 +417,9 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
                                   className="w-full h-full object-cover"
                                 />
                               </motion.div>
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                               <Badge className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm text-gray-900 shadow-lg">
-                                {t.categories[place.category as keyof typeof t.categories]}
+                                {t.categories[place.category as keyof typeof t.categories] ?? place.category}
                               </Badge>
                             </div>
                             <CardContent className="p-5">
@@ -348,6 +431,7 @@ export function DiscoverPage({ language, onNavigate }: DiscoverPageProps) {
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <MapPin className="w-4 h-4 text-blue-500" />
+                                  {/* BURASI ARTIK KULLANICININ KONUMUNA GÖRE distanceKm */}
                                   <span>{place.distanceKm} {t.km}</span>
                                 </div>
                                 <div className="flex items-center gap-1">

@@ -24,11 +24,7 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const id =
-      placeData?.placeId ??
-      placeData?.PlaceId ??
-      placeData?.id;
-
+    const id = placeData?.placeId ?? placeData?.PlaceId ?? placeData?.id;
     if (!id) {
       setLoading(false);
       return;
@@ -45,15 +41,11 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
       createPlan: 'Benim İçin Plan Oluştur',
       share: 'Paylaş',
       about: 'Hakkında',
-      location: 'Konum',
       contact: 'İletişim',
-      hours: 'Açılış Saatleri',
       aiSummary: 'AI Özeti',
       reviews: 'Kullanıcı Yorumları',
       allReviews: 'Tüm Yorumlar',
-      similarPlaces: 'Benzer Yerler',
       phone: 'Telefon',
-      address: 'Adres',
       openNow: 'Şimdi Açık',
       closedNow: 'Şimdi Kapalı',
       historical: 'Tarihi',
@@ -61,22 +53,21 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
       durationFallback: '2 saat',
       map: 'Harita',
       loading: 'Yükleniyor…',
-      noPhone: '-'
+      noPhone: '-',
+      noReviews: 'Yorumlar yakında.',
+      noAbout: 'Bu yer hakkında ayrıntılı bilgi yakında eklenecek.',
+      mapNotAvailable: 'Harita konumu bulunamadı.'
     },
     EN: {
       addToRoute: 'Add to Route',
       createPlan: 'Create Plan for Me',
       share: 'Share',
       about: 'About',
-      location: 'Location',
       contact: 'Contact',
-      hours: 'Opening Hours',
       aiSummary: 'AI Summary',
       reviews: 'User Reviews',
       allReviews: 'All Reviews',
-      similarPlaces: 'Similar Places',
       phone: 'Phone',
-      address: 'Address',
       openNow: 'Open Now',
       closedNow: 'Closed Now',
       historical: 'Historical',
@@ -84,21 +75,19 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
       durationFallback: '2 hours',
       map: 'Map',
       loading: 'Loading…',
-      noPhone: '-'
+      noPhone: '-',
+      noReviews: 'Reviews coming soon.',
+      noAbout: 'Detailed information about this place will be added soon.',
+      mapNotAvailable: 'Map location is not available.'
     }
   };
   const t = translations[language];
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        {t.loading}
-      </div>
-    );
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center">{t.loading}</div>;
   }
 
   if (!data) {
-    // placeId yoksa veya fetch hata verdiyse basit boş durum
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -113,81 +102,46 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
     );
   }
 
-  // İsim ve süre: backend TR/EN alanları varsa kullan, yoksa tekil name ve fallback
+  // İsim ve süre (detay API tek isim döndürüyor, varsa Discover'dan geleni kullanıyoruz)
   const displayName =
-    (language === 'TR' ? (data as any).nameTr : (data as any).nameEn) ?? data.name ?? placeData?.displayName ?? '';
+    (language === 'TR' ? (data as any).nameTr : (data as any).nameEn) ??
+    data.name ??
+    placeData?.displayName ??
+    '';
 
   const durationText =
     language === 'TR'
       ? ((data as any).durationTr ?? t.durationFallback)
       : ((data as any).durationEn ?? t.durationFallback);
 
-  // BURASI GÜNCEL: göreli URL'yi kökle, yoksa fallback kullan
   const photoUrl = toApiUrl(data.photoUrl || placeData?.imageUrl) || FALLBACK_IMG;
-
-  // Açık/kapalı
   const isOpen = typeof data.openingNow === 'boolean' ? data.openingNow : undefined;
-
-  // Saat metni (ilk satır)
   const hoursLine =
-    Array.isArray((data as any).weekdayText) && (data as any).weekdayText.length > 0
-      ? (data as any).weekdayText[0]
-      : undefined;
+    Array.isArray(data.weekdayText) && data.weekdayText.length > 0 ? data.weekdayText[0] : undefined;
 
-  // Basit sahte yorumlar (tasarım korunuyor)
-  const mockReviews = [
-    {
-      id: 1,
-      author: 'Ahmet Y.',
-      rating: 5,
-      dateTR: '2 gün önce',
-      dateEN: '2 days ago',
-      commentTR: 'Muhteşem bir deneyimdi! Tarih kokan her köşesi harika.',
-      commentEN: 'Amazing experience! Every corner smells of history.'
-    },
-    {
-      id: 2,
-      author: 'Sarah M.',
-      rating: 4,
-      dateTR: '1 hafta önce',
-      dateEN: '1 week ago',
-      commentTR: 'Kesinlikle görülmesi gereken bir yer. Rehber eşliğinde gezmenizi öneririm.',
-      commentEN: 'A must-see place. I recommend touring with a guide.'
-    },
-    {
-      id: 3,
-      author: 'Can K.',
-      rating: 5,
-      dateTR: '2 hafta önce',
-      dateEN: '2 weeks ago',
-      commentTR: 'Harika mimari ve muhteşem atmosfer. Fotoğraf çekmek için ideal.',
-      commentEN: 'Great architecture and amazing atmosphere. Perfect for photography.'
-    }
-  ];
+  // Google Maps embed (lat/lng varsa)
+  const hasCoords = !!data.lat && !!data.lng;
+  const googleMapSrc = hasCoords
+    ? `https://www.google.com/maps?q=${data.lat},${data.lng}&hl=${
+        language === 'TR' ? 'tr' : 'en'
+      }&z=16&output=embed`
+    : '';
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Image */}
       <div className="relative h-96">
-        <ImageWithFallback
-          src={photoUrl}
-          alt={displayName}
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+        <ImageWithFallback src={photoUrl} alt={displayName} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
           <div className="container mx-auto">
             <div className="flex items-center gap-3 mb-2">
-              <Badge className="bg-white text-gray-900">
-                {language === 'TR' ? t.historical : t.historical}
-              </Badge>
+              <Badge className="bg-white text-gray-900">{t.historical}</Badge>
               <div className="flex items-center gap-1">
                 <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                 <span>{(data.rating as any)?.toFixed?.(1) ?? data.rating}</span>
-                {typeof data.userRatingsTotal === 'number' && (
-                  <span className="text-gray-200">
-                    {t.reviewsCount(data.userRatingsTotal)}
-                  </span>
+                {!!data.userRatingsTotal && (
+                  <span className="text-gray-200">{t.reviewsCount(data.userRatingsTotal)}</span>
                 )}
               </div>
             </div>
@@ -256,9 +210,7 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
               <CardContent className="p-6">
                 <h3 className="text-gray-900 mb-4">{t.about}</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  {language === 'TR'
-                    ? (data as any).descriptionTr ?? 'Bu yer hakkında ayrıntılı bilgi yakında eklenecek.'
-                    : (data as any).descriptionEn ?? 'Detailed information about this place will be added soon.'}
+                  {language === 'TR' ? data.descriptionTr ?? t.noAbout : data.descriptionEn ?? t.noAbout}
                 </p>
               </CardContent>
             </Card>
@@ -268,15 +220,63 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-gray-900">{t.reviews}</h3>
-                  <Button variant="link">{t.allReviews}</Button>
+                  {!!data.userRatingsTotal && (
+                    <span className="text-sm text-gray-500">{t.reviewsCount(data.userRatingsTotal)}</span>
+                  )}
                 </div>
-                <div className="space-y-6">
-                  {[/* mock reviews */].length === 0 ? (
-                    <p className="text-gray-500">
-                      {language === 'TR' ? 'Yorumlar yakında.' : 'Reviews coming soon.'}
-                    </p>
-                  ) : null}
-                </div>
+
+                {data.reviews && data.reviews.length > 0 ? (
+                  <div className="space-y-6">
+                    {data.reviews.map((r, idx) => (
+                      <div key={idx} className="flex gap-4">
+                        <Avatar className="h-10 w-10">
+                          {r.profilePhotoUrl ? (
+                            <img
+                              src={r.profilePhotoUrl}
+                              alt={r.authorName || 'User'}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <AvatarFallback>
+                              {(r.authorName || '?')
+                                .split(' ')
+                                .map((p) => p[0])
+                                .join('')
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </AvatarFallback>
+                          )}
+                        </Avatar>
+
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium text-gray-900">
+                              {r.authorName || (language === 'TR' ? 'Ziyaretçi' : 'Visitor')}
+                            </p>
+                            <span className="text-sm text-gray-500">{r.relativeTime || ''}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1 mt-1">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-4 h-4 ${
+                                  i < Math.round(r.rating)
+                                    ? 'fill-yellow-400 text-yellow-400'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+
+                          {r.text && <p className="text-gray-700 mt-2 leading-relaxed">{r.text}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">{t.noReviews}</p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -292,7 +292,7 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                     <div className="flex items-start gap-3">
                       <Phone className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div>
-                        <p className="text-gray-600">{(data as any).phone || t.noPhone}</p>
+                        <p className="text-gray-600">{data.phone || t.noPhone}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -308,7 +308,9 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                         {typeof isOpen === 'boolean' && (
                           <Badge
                             variant="outline"
-                            className={`mt-1 ${isOpen ? 'text-green-600 border-green-600' : 'text-red-600 border-red-600'}`}
+                            className={`mt-1 ${
+                              isOpen ? 'text-green-600 border-green-600' : 'text-red-600 border-red-600'
+                            }`}
                           >
                             {isOpen ? t.openNow : t.closedNow}
                           </Badge>
@@ -319,15 +321,25 @@ export function PlaceDetailPage({ language, onNavigate, placeData }: PlaceDetail
                 </CardContent>
               </Card>
 
-              {/* Map Placeholder */}
+              {/* Map */}
               <Card>
                 <CardContent className="p-0">
-                  <div className="h-64 bg-gray-200 rounded-lg flex items-center justify-center">
-                    <div className="text-center">
-                      <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-gray-500">{t.map}</p>
+                  {hasCoords ? (
+                    <iframe
+                      title="map"
+                      src={googleMapSrc}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      className="w-full h-64 rounded-lg border-0"
+                    />
+                  ) : (
+                    <div className="h-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                      <div className="text-center">
+                        <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-500">{t.mapNotAvailable}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

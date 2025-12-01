@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, MapPin, Filter, ChevronDown, SlidersHorizontal, Star } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -16,6 +16,9 @@ import {
 } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 
+import { fetchMuseums, toApiUrl } from '../lib/api';
+import type { PlaceListItem } from './types/places';
+
 interface EnhancedHomePageProps {
   language: 'TR' | 'EN';
   onNavigate: (page: string, data?: any) => void;
@@ -24,73 +27,39 @@ interface EnhancedHomePageProps {
   onToggleFavorite: (id: string) => void;
 }
 
+// Şimdilik tek şehir: İzmir
 const cities = [
   { id: 'izmir', name: 'İzmir', nameEn: 'Izmir' }
 ];
 
+// Backend kategorileri ile hizalı kategori listesi
 const categories = [
-  { id: 'parks', icon: '🏞️', name: 'Parklar', nameEn: 'Parks' },
-  { id: 'museums', icon: '🏛️', name: 'Müzeler', nameEn: 'Museums' },
-  { id: 'baths', icon: '♨️', name: 'Hamamlar', nameEn: 'Turkish Baths' },
-  { id: 'historical', icon: '🏺', name: 'Tarihi Yerler', nameEn: 'Historical Sites' }
+  { id: 'nature', icon: '🏞️', name: 'Doğa', nameEn: 'Nature' },
+  { id: 'historical', icon: '🏛️', name: 'Tarihi Yerler', nameEn: 'Historical' },
+  { id: 'art', icon: '🎨', name: 'Sanat', nameEn: 'Art' },
+  { id: 'relax', icon: '♨️', name: 'Rahatlama / Spa', nameEn: 'Relax / Spa' },
+  { id: 'shopping', icon: '🛍️', name: 'Alışveriş', nameEn: 'Shopping' },
+  { id: 'gastronomy', icon: '🍽️', name: 'Gastronomi', nameEn: 'Gastronomy' },
+  { id: 'family', icon: '👨‍👩‍👧', name: 'Aile', nameEn: 'Family' },
+  { id: 'romantic', icon: '💝', name: 'Romantik', nameEn: 'Romantic' },
 ];
 
-const mockPlaces = [
-  {
-    id: '1',
-    name: 'Kordonboyu',
-    nameEn: 'Kordon Promenade',
-    category: 'parks',
-    rating: 4.8,
-    distance: 1.2,
-    image: 'https://images.unsplash.com/photo-1635148040718-acf281233b8e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxuYXR1cmUlMjBsYW5kc2NhcGUlMjBtb3VudGFpbnN8ZW58MXx8fHwxNzU5OTg2NDk5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-    city: 'izmir'
-  },
-  {
-    id: '2',
-    name: 'Kemeraltı Çarşısı',
-    nameEn: 'Kemeralti Bazaar',
-    category: 'historical',
-    rating: 4.6,
-    distance: 0.8,
-    image: 'https://images.unsplash.com/photo-1663660408776-abc66d76f611?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhbmNpZW50JTIwaGlzdG9yaWNhbCUyMGJ1aWxkaW5nfGVufDF8fHx8MTc2MDA0Mjc3Mnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-    city: 'izmir'
-  },
-  {
-    id: '3',
-    name: 'İzmir Arkeoloji Müzesi',
-    nameEn: 'Izmir Archaeology Museum',
-    category: 'museums',
-    rating: 4.7,
-    distance: 2.5,
-    image: 'https://images.unsplash.com/photo-1752408735055-07a651855edc?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhcnQlMjBtdXNldW0lMjBnYWxsZXJ5fGVufDF8fHx8MTc2MDA0Mjc3M3ww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-    city: 'izmir'
-  },
-  {
-    id: '4',
-    name: 'Tarihi Havra Hamamı',
-    nameEn: 'Historic Havra Bath',
-    category: 'baths',
-    rating: 4.5,
-    distance: 1.5,
-    image: 'https://images.unsplash.com/photo-1692271731602-08778b94ef77?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpc3RhbmJ1bCUyMHRyYXZlbCUyMHRvdXJpc218ZW58MXx8fHwxNzYwMDQyNzcxfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-    city: 'izmir'
-  }
-];
-
-export function EnhancedHomePage({ 
-  language, 
-  onNavigate, 
+export function EnhancedHomePage({
+  language,
+  onNavigate,
   isAuthenticated,
   favorites,
-  onToggleFavorite 
+  onToggleFavorite
 }: EnhancedHomePageProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCity, setSelectedCity] = useState('');
+  const [selectedCity, setSelectedCity] = useState('izmir');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState('rating');
-  const [distanceRange, setDistanceRange] = useState([2]);
+  const [sortBy, setSortBy] = useState('distance');
+  const [distanceRange, setDistanceRange] = useState([2]); // km
   const [showCategories, setShowCategories] = useState(false);
+
+  const [places, setPlaces] = useState<PlaceListItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const translations = {
     TR: {
@@ -106,7 +75,9 @@ export function EnhancedHomePage({
       distance: 'Mesafe',
       km: 'km',
       nearby: 'Yakınınızdaki Yerler',
-      viewAll: 'Tümünü Gör'
+      viewAll: 'Tümünü Gör',
+      loading: 'Yakınınızdaki yerler yükleniyor...',
+      locationDenied: 'Konum alınamadı, İzmir merkezi baz alınarak listeleniyor.'
     },
     EN: {
       search: 'Where do you want to go?',
@@ -121,11 +92,77 @@ export function EnhancedHomePage({
       distance: 'Distance',
       km: 'km',
       nearby: 'Places Near You',
-      viewAll: 'View All'
+      viewAll: 'View All',
+      loading: 'Loading nearby places...',
+      locationDenied: 'Location not available, using Izmir city center.'
     }
   };
 
   const t = translations[language];
+
+  // İlk açılışta kullanıcının konumunu alıp backend'e iletiyoruz
+  useEffect(() => {
+    let cancelled = false;
+
+    // Bornova merkez (Kabaca Küçükpark / Büyükpark çevresi)
+    const BORNOVA_CENTER = {
+      lat: 38.4622,
+      lng: 27.2160,
+    };
+
+    const loadPlaces = async (lat?: number, lng?: number) => {
+      try {
+        const data = await fetchMuseums(lat, lng);
+        if (!cancelled) {
+          setPlaces(data);
+        }
+      } catch (e) {
+        console.error('fetchMuseums failed', e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          console.log('[RotaAI][Geo][Home] position:', {
+            latitude,
+            longitude,
+            accuracy,
+          });
+
+          // HTTP'de/desktop'ta accuracy genelde çok yüksek geliyor (3000m+).
+          // 1000m üstü ise pek güvenmeyip Bornova fallback kullanıyoruz.
+          const useFallback = !accuracy || accuracy > 1000;
+
+          if (useFallback) {
+            console.warn('[RotaAI][Geo][Home] accuracy kötü, Bornova fallback kullanılıyor');
+            loadPlaces(BORNOVA_CENTER.lat, BORNOVA_CENTER.lng);
+          } else {
+            loadPlaces(latitude, longitude);
+          }
+        },
+        (err) => {
+          console.warn('[RotaAI][Geo][Home] hata, Bornova fallback kullanılıyor:', err);
+          loadPlaces(BORNOVA_CENTER.lat, BORNOVA_CENTER.lng);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 600000,
+        }
+      );
+    } else {
+      console.warn('[RotaAI][Geo][Home] geolocation yok, Bornova fallback kullanılıyor');
+      loadPlaces(BORNOVA_CENTER.lat, BORNOVA_CENTER.lng);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories(prev =>
@@ -135,20 +172,32 @@ export function EnhancedHomePage({
     );
   };
 
-  const filteredPlaces = mockPlaces.filter(place => {
-    if (selectedCity && place.city !== selectedCity) return false;
-    if (selectedCategories.length > 0 && !selectedCategories.includes(place.category)) return false;
-    if (place.distance > distanceRange[0]) return false;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return place.name.toLowerCase().includes(query) || place.nameEn.toLowerCase().includes(query);
-    }
-    return true;
-  }).sort((a, b) => {
-    if (sortBy === 'rating') return b.rating - a.rating;
-    if (sortBy === 'distance') return a.distance - b.distance;
-    return (language === 'TR' ? a.name : a.nameEn).localeCompare(language === 'TR' ? b.name : b.nameEn);
-  });
+  const filteredPlaces = places
+    .filter(place => {
+      // Şimdilik tüm veriler İzmir, city filtresi sadece ileride farklı şehirler için
+      if (selectedCity && (place as any).city && (place as any).city.toLowerCase() !== 'izmir') return false;
+
+      if (selectedCategories.length > 0 && !selectedCategories.includes(place.category)) return false;
+
+      if (place.distanceKm > distanceRange[0]) return false;
+
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          place.nameTr.toLowerCase().includes(query) ||
+          place.nameEn.toLowerCase().includes(query)
+        );
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'rating') return b.rating - a.rating;
+      if (sortBy === 'distance') return a.distanceKm - b.distanceKm;
+      const aName = language === 'TR' ? a.nameTr : a.nameEn;
+      const bName = language === 'TR' ? b.nameTr : b.nameEn;
+      return aName.localeCompare(bName);
+    });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30 pb-20 md:pb-8">
@@ -282,9 +331,9 @@ export function EnhancedHomePage({
               <Slider
                 value={distanceRange}
                 onValueChange={setDistanceRange}
-                max={10}
-                min={0.5}
-                step={0.5}
+                max={20}
+                min={1}
+                step={1}
                 className="w-full"
               />
             </CardContent>
@@ -304,92 +353,114 @@ export function EnhancedHomePage({
             </Button>
           </div>
 
-          <div className="space-y-4">
-            <AnimatePresence mode="popLayout">
-              {filteredPlaces.map((place, index) => (
-                <motion.div
-                  key={place.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: index * 0.05 }}
-                  layout
-                >
-                  <Card
-                    className="glass-morphism border-0 cursor-pointer overflow-hidden"
-                    onClick={() => onNavigate('place-detail', place)}
-                  >
-                    <CardContent className="p-0">
-                      <div className="flex gap-4">
-                        <div className="relative w-24 h-24 flex-shrink-0">
-                          <ImageWithFallback
-                            src={place.image}
-                            alt={language === 'TR' ? place.name : place.nameEn}
-                            className="w-full h-full object-cover rounded-l-xl"
-                          />
-                          <motion.button
-                            whileTap={{ scale: 0.8 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!isAuthenticated) {
-                                onNavigate('auth');
-                              } else {
-                                onToggleFavorite(place.id);
-                              }
-                            }}
-                            className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg"
-                          >
-                            <motion.div
-                              animate={{
-                                scale: favorites.includes(place.id) ? [1, 1.2, 1] : 1
-                              }}
-                              transition={{ duration: 0.3 }}
-                            >
-                              ❤️
-                            </motion.div>
-                          </motion.button>
-                        </div>
-                        <div className="flex-1 py-3 pr-4">
-                          <h3 className="text-gray-900 mb-1">
-                            {language === 'TR' ? place.name : place.nameEn}
-                          </h3>
-                          <div className="flex items-center gap-3 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                              <span>{place.rating}</span>
+          {loading && (
+            <div className="space-y-4">
+              <p className="text-gray-500 text-sm">{t.loading}</p>
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-24 rounded-xl bg-gray-200/60 animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {!loading && (
+            <div className="space-y-4">
+              <AnimatePresence mode="popLayout">
+                {filteredPlaces.map((place, index) => {
+                  const displayName = language === 'TR' ? place.nameTr : place.nameEn;
+                  const img = toApiUrl(place.imageUrl);
+
+                  return (
+                    <motion.div
+                      key={place.placeId}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      transition={{ delay: index * 0.03 }}
+                      layout
+                    >
+                      <Card
+                        className="glass-morphism border-0 cursor-pointer overflow-hidden"
+                        onClick={() =>
+                          onNavigate('place-detail', {
+                            placeId: place.placeId,
+                            displayName,
+                            imageUrl: place.imageUrl
+                          })
+                        }
+                      >
+                        <CardContent className="p-0">
+                          <div className="flex gap-4">
+                            <div className="relative w-24 h-24 flex-shrink-0">
+                              <ImageWithFallback
+                                src={img}
+                                alt={displayName}
+                                className="w-full h-full object-cover rounded-l-xl"
+                              />
+                              <motion.button
+                                whileTap={{ scale: 0.8 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isAuthenticated) {
+                                    onNavigate('auth');
+                                  } else {
+                                    onToggleFavorite(place.placeId);
+                                  }
+                                }}
+                                className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg"
+                              >
+                                <motion.div
+                                  animate={{
+                                    scale: favorites.includes(place.placeId) ? [1, 1.2, 1] : 1
+                                  }}
+                                  transition={{ duration: 0.3 }}
+                                >
+                                  ❤️
+                                </motion.div>
+                              </motion.button>
                             </div>
-                            <span>•</span>
-                            <div className="flex items-center gap-1">
-                              <MapPin className="w-4 h-4 text-blue-500" />
-                              <span>{place.distance} {t.km}</span>
+                            <div className="flex-1 py-3 pr-4">
+                              <h3 className="text-gray-900 mb-1">
+                                {displayName}
+                              </h3>
+                              <div className="flex items-center gap-3 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                                  <span>{place.rating.toFixed(1)}</span>
+                                </div>
+                                <span>•</span>
+                                <div className="flex items-center gap-1">
+                                  <MapPin className="w-4 h-4 text-blue-500" />
+                                  <span>{place.distanceKm} {t.km}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
 
-            {filteredPlaces.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-12"
-              >
-                <div className="text-6xl mb-4">🔍</div>
-                <h3 className="text-gray-900 mb-2">
-                  {language === 'TR' ? 'Sonuç Bulunamadı' : 'No Results Found'}
-                </h3>
-                <p className="text-gray-600">
-                  {language === 'TR' 
-                    ? 'Farklı filtreler veya şehir deneyin'
-                    : 'Try different filters or city'}
-                </p>
-              </motion.div>
-            )}
-          </div>
+              {!loading && filteredPlaces.length === 0 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-center py-12"
+                >
+                  <div className="text-6xl mb-4">🔍</div>
+                  <h3 className="text-gray-900 mb-2">
+                    {language === 'TR' ? 'Sonuç Bulunamadı' : 'No Results Found'}
+                  </h3>
+                  <p className="text-gray-600">
+                    {language === 'TR'
+                      ? 'Farklı filtreler veya mesafe deneyin'
+                      : 'Try different filters or distance range'}
+                  </p>
+                </motion.div>
+              )}
+            </div>
+          )}
         </AnimatedSection>
       </div>
     </div>

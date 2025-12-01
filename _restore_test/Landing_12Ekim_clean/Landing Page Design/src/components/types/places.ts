@@ -3,7 +3,7 @@ export interface PlaceListItem {
   placeId: string;
   nameTr: string;
   nameEn: string;
-  category: 'historical' | 'art' | 'nature' | 'gastronomy' | 'family' | 'romantic';
+  category: 'historical' | 'art' | 'nature' | 'gastronomy' | 'family' | 'romantic' | string;
   rating: number;
   distanceKm: number;
   imageUrl: string;
@@ -11,7 +11,16 @@ export interface PlaceListItem {
   durationEn: string;
 }
 
-// Detay sayfası için
+// Yorum tipi (backend ile birebir)
+export interface PlaceReview {
+  authorName?: string | null;
+  rating: number;
+  relativeTime?: string | null;
+  text?: string | null;
+  profilePhotoUrl?: string | null;
+}
+
+// Detay sayfası için (backend PlaceDetailDto ile hizalı)
 export interface PlaceDetail {
   placeId: string;
   name: string;
@@ -24,9 +33,16 @@ export interface PlaceDetail {
   weekdayText?: string[] | null;
   phone?: string | null;
   website?: string | null;
-  editorialSummary?: string | null;
+
+  // HAKKINDA
+  descriptionTr?: string | null;
+  descriptionEn?: string | null;
+
   photoUrl: string;
   city: string;
   district: string;
   mainCategory: string;
+
+  // İlk 3 yorum
+  reviews?: PlaceReview[] | null;
 }
