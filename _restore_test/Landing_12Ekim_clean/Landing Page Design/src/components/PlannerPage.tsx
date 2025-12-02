@@ -1,5 +1,15 @@
+// frontend/src/components/PlannerPage.tsx
 import { useState } from 'react';
-import { Calendar, Clock, Sparkles, Download, Share2, Save, MapPin, ArrowRight } from 'lucide-react';
+import {
+  Calendar,
+  Clock,
+  Sparkles,
+  Download,
+  Share2,
+  Save,
+  MapPin,
+  ArrowRight
+} from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
@@ -7,6 +17,11 @@ import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Slider } from './ui/slider';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+
+import {
+  generatePlan,
+  type PlanResponseDto
+} from '../lib/api';
 
 interface PlannerPageProps {
   language: 'TR' | 'EN';
@@ -18,8 +33,13 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
   const [selectedDate, setSelectedDate] = useState('');
   const [duration, setDuration] = useState([8]);
   const [interests, setInterests] = useState<string[]>([]);
-  const [intensity, setIntensity] = useState('moderate');
+  const [intensity, setIntensity] = useState<'relaxed' | 'moderate' | 'intensive'>('moderate');
+  const [region, setRegion] = useState<'nearby' | 'city'>('nearby');
+
   const [planGenerated, setPlanGenerated] = useState(false);
+  const [plan, setPlan] = useState<PlanResponseDto | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const translations = {
     TR: {
@@ -35,6 +55,11 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
         moderate: 'Orta',
         intensive: 'Yoğun'
       },
+      regionTitle: 'Rota Bölgesi',
+      regionOptions: {
+        nearby: 'Yakınımdaki Yerler',
+        city: 'İzmir Geneli'
+      },
       categories: {
         history: 'Tarih',
         nature: 'Doğa',
@@ -46,13 +71,15 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
         romantic: 'Romantik'
       },
       generatePlan: 'Plan Oluştur',
+      generating: 'Plan Oluşturuluyor...',
       yourPlan: 'Sizin İçin Oluşturulan Plan',
       downloadPdf: 'PDF İndir',
       sharePlan: 'Planı Paylaş',
       savePlan: 'Planı Kaydet',
       createNewPlan: 'Yeni Plan Oluştur',
       totalDuration: 'Toplam Süre',
-      stops: 'Durak'
+      stops: 'Durak',
+      error: 'Plan oluşturulamadı. Lütfen tekrar deneyin.'
     },
     EN: {
       title: 'Create Plan with AI',
@@ -67,6 +94,11 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
         moderate: 'Moderate',
         intensive: 'Intensive'
       },
+      regionTitle: 'Route Area',
+      regionOptions: {
+        nearby: 'Near Me',
+        city: 'Whole Izmir'
+      },
       categories: {
         history: 'History',
         nature: 'Nature',
@@ -78,13 +110,15 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
         romantic: 'Romantic'
       },
       generatePlan: 'Generate Plan',
+      generating: 'Generating Plan...',
       yourPlan: 'Your Custom Plan',
       downloadPdf: 'Download PDF',
       sharePlan: 'Share Plan',
       savePlan: 'Save Plan',
       createNewPlan: 'Create New Plan',
       totalDuration: 'Total Duration',
-      stops: 'Stops'
+      stops: 'Stops',
+      error: 'Failed to generate plan. Please try again.'
     }
   };
 
@@ -102,68 +136,79 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
   ];
 
   const toggleInterest = (interestId: string) => {
-    setInterests(prev =>
+    setInterests((prev) =>
       prev.includes(interestId)
-        ? prev.filter(i => i !== interestId)
+        ? prev.filter((i) => i !== interestId)
         : [...prev, interestId]
     );
   };
 
-  const mockPlan = [
-    {
-      time: '09:00',
-      duration: '1.5 saat',
-      durationEn: '1.5 hours',
-      place: 'Ayasofya',
-      placeEn: 'Hagia Sophia',
-      description: 'Tarihi camii ve müzeyi gezin',
-      descriptionEn: 'Visit the historical mosque and museum'
-    },
-    {
-      time: '11:00',
-      duration: '1 saat',
-      durationEn: '1 hour',
-      place: 'Sultanahmet Meydanı',
-      placeEn: 'Sultanahmet Square',
-      description: 'Meydan ve çevresindeki tarihi yapıları keşfedin',
-      descriptionEn: 'Explore the square and surrounding historical buildings'
-    },
-    {
-      time: '12:30',
-      duration: '1.5 saat',
-      durationEn: '1.5 hours',
-      place: 'Balat\'ta Kahve Molası',
-      placeEn: 'Coffee Break in Balat',
-      description: 'Renkli sokakları keşfedin ve yerel kahvede mola verin',
-      descriptionEn: 'Explore colorful streets and have a break at a local café'
-    },
-    {
-      time: '14:30',
-      duration: '2 saat',
-      durationEn: '2 hours',
-      place: 'Topkapı Sarayı',
-      placeEn: 'Topkapi Palace',
-      description: 'Osmanlı İmparatorluğu\'nun kalbi olan sarayı gezin',
-      descriptionEn: 'Tour the palace, heart of the Ottoman Empire'
-    },
-    {
-      time: '17:00',
-      duration: '1 saat',
-      durationEn: '1 hour',
-      place: 'Kapalıçarşı',
-      placeEn: 'Grand Bazaar',
-      description: 'Alışveriş yapın ve hediyelik eşya alın',
-      descriptionEn: 'Shop and buy souvenirs'
+  // ---- Konum alma helper'ı ----
+  const getUserLocation = (): Promise<{ lat?: number; lng?: number }> => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      return Promise.resolve({});
     }
-  ];
 
-  const handleGeneratePlan = () => {
-    // Simulate AI processing
-    setTimeout(() => {
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          resolve({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          });
+        },
+        () => resolve({}),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+  };
+
+  // ---- GPT ile plan oluşturma ----
+  const handleGeneratePlan = async () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const loc = await getUserLocation();
+
+      const payload = {
+        startLat: loc.lat,
+        startLng: loc.lng,
+        durationHours: duration[0],
+        interests,
+        intensity,
+        language,
+        date: selectedDate ? new Date(selectedDate).toISOString() : undefined,
+        region
+      } as const;
+
+      const result = await generatePlan(payload);
+
+      setPlan(result);
       setStep(2);
       setPlanGenerated(true);
-    }, 1000);
+    } catch (e) {
+      console.error(e);
+      setError(t.error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const resetPlanner = () => {
+    setStep(1);
+    setPlanGenerated(false);
+    setPlan(null);
+    setSelectedDate('');
+    setInterests([]);
+    setIntensity('moderate');
+    setRegion('nearby');
+    setError(null);
+  };
+
+  const totalHoursFromPlan = plan
+    ? Math.round((plan.totalDurationMinutes / 60) * 10) / 10
+    : duration[0];
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -183,19 +228,31 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
 
           {/* Step Indicator */}
           <div className="flex items-center justify-center gap-4 mb-8">
-            <div className={`flex items-center gap-2 ${step === 1 ? 'text-blue-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                step === 1 ? 'bg-blue-600 text-white' : 'bg-gray-200'
-              }`}>
+            <div
+              className={`flex items-center gap-2 ${
+                step === 1 ? 'text-blue-600' : 'text-gray-400'
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  step === 1 ? 'bg-blue-600 text-white' : 'bg-gray-200'
+                }`}
+              >
                 1
               </div>
               <span>Tercihler</span>
             </div>
-            <div className="w-12 h-0.5 bg-gray-300"></div>
-            <div className={`flex items-center gap-2 ${step === 2 ? 'text-blue-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                step === 2 ? 'bg-blue-600 text-white' : 'bg-gray-200'
-              }`}>
+            <div className="w-12 h-0.5 bg-gray-300" />
+            <div
+              className={`flex items-center gap-2 ${
+                step === 2 ? 'text-blue-600' : 'text-gray-400'
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  step === 2 ? 'bg-blue-600 text-white' : 'bg-gray-200'
+                }`}
+              >
                 2
               </div>
               <span>Planınız</span>
@@ -224,7 +281,8 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
                 <div>
                   <label className="flex items-center gap-2 mb-3 text-gray-900">
                     <Clock className="w-5 h-5" />
-                    {t.duration}: {duration[0]} saat
+                    {t.duration}: {duration[0]}{' '}
+                    {language === 'TR' ? 'saat' : 'hours'}
                   </label>
                   <Slider
                     value={duration}
@@ -242,7 +300,9 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
 
                 {/* Interests */}
                 <div>
-                  <label className="mb-3 text-gray-900 block">{t.interests}</label>
+                  <label className="mb-3 text-gray-900 block">
+                    {t.interests}
+                  </label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {interestOptions.map((option) => (
                       <div
@@ -267,69 +327,182 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
 
                 {/* Intensity */}
                 <div>
-                  <label className="mb-3 text-gray-900 block">{t.intensity}</label>
-                  <RadioGroup value={intensity} onValueChange={setIntensity}>
+                  <label className="mb-3 text-gray-900 block">
+                    {t.intensity}
+                  </label>
+                  <RadioGroup
+                    value={intensity}
+                    onValueChange={(val) =>
+                      setIntensity(val as 'relaxed' | 'moderate' | 'intensive')
+                    }
+                  >
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div
                         onClick={() => setIntensity('relaxed')}
                         className={`p-4 border-2 rounded-lg cursor-pointer ${
-                          intensity === 'relaxed' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'
+                          intensity === 'relaxed'
+                            ? 'border-blue-600 bg-blue-50'
+                            : 'border-gray-200'
                         }`}
                       >
-                        <RadioGroupItem value="relaxed" id="relaxed" className="mb-2" />
-                        <label htmlFor="relaxed" className="text-gray-900 cursor-pointer block">
+                        <RadioGroupItem
+                          value="relaxed"
+                          id="relaxed"
+                          className="mb-2"
+                        />
+                        <label
+                          htmlFor="relaxed"
+                          className="text-gray-900 cursor-pointer block"
+                        >
                           {t.intensityLevels.relaxed}
                         </label>
                         <p className="text-gray-600 mt-1">
-                          {language === 'TR' ? 'Yavaş tempo, bol mola' : 'Slow pace, many breaks'}
+                          {language === 'TR'
+                            ? 'Yavaş tempo, bol mola'
+                            : 'Slow pace, many breaks'}
                         </p>
                       </div>
                       <div
                         onClick={() => setIntensity('moderate')}
                         className={`p-4 border-2 rounded-lg cursor-pointer ${
-                          intensity === 'moderate' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'
+                          intensity === 'moderate'
+                            ? 'border-blue-600 bg-blue-50'
+                            : 'border-gray-200'
                         }`}
                       >
-                        <RadioGroupItem value="moderate" id="moderate" className="mb-2" />
-                        <label htmlFor="moderate" className="text-gray-900 cursor-pointer block">
+                        <RadioGroupItem
+                          value="moderate"
+                          id="moderate"
+                          className="mb-2"
+                        />
+                        <label
+                          htmlFor="moderate"
+                          className="text-gray-900 cursor-pointer block"
+                        >
                           {t.intensityLevels.moderate}
                         </label>
                         <p className="text-gray-600 mt-1">
-                          {language === 'TR' ? 'Dengeli tempo' : 'Balanced pace'}
+                          {language === 'TR'
+                            ? 'Dengeli tempo'
+                            : 'Balanced pace'}
                         </p>
                       </div>
                       <div
                         onClick={() => setIntensity('intensive')}
                         className={`p-4 border-2 rounded-lg cursor-pointer ${
-                          intensity === 'intensive' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'
+                          intensity === 'intensive'
+                            ? 'border-blue-600 bg-blue-50'
+                            : 'border-gray-200'
                         }`}
                       >
-                        <RadioGroupItem value="intensive" id="intensive" className="mb-2" />
-                        <label htmlFor="intensive" className="text-gray-900 cursor-pointer block">
+                        <RadioGroupItem
+                          value="intensive"
+                          id="intensive"
+                          className="mb-2"
+                        />
+                        <label
+                          htmlFor="intensive"
+                          className="text-gray-900 cursor-pointer block"
+                        >
                           {t.intensityLevels.intensive}
                         </label>
                         <p className="text-gray-600 mt-1">
-                          {language === 'TR' ? 'Hızlı tempo, çok nokta' : 'Fast pace, many stops'}
+                          {language === 'TR'
+                            ? 'Hızlı tempo, çok nokta'
+                            : 'Fast pace, many stops'}
                         </p>
                       </div>
                     </div>
                   </RadioGroup>
                 </div>
 
+                {/* Route Region */}
+                <div>
+                  <label className="mb-3 text-gray-900 block">
+                    {t.regionTitle}
+                  </label>
+                  <RadioGroup
+                    value={region}
+                    onValueChange={(val) =>
+                      setRegion(val as 'nearby' | 'city')
+                    }
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div
+                        onClick={() => setRegion('nearby')}
+                        className={`p-4 border-2 rounded-lg cursor-pointer ${
+                          region === 'nearby'
+                            ? 'border-blue-600 bg-blue-50'
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        <RadioGroupItem
+                          value="nearby"
+                          id="nearby"
+                          className="mb-2"
+                        />
+                        <label
+                          htmlFor="nearby"
+                          className="text-gray-900 cursor-pointer block"
+                        >
+                          {t.regionOptions.nearby}
+                        </label>
+                        <p className="text-gray-600 mt-1 text-sm">
+                          {language === 'TR'
+                            ? 'Konumuna yakın, yürünebilir rota'
+                            : 'Walkable route around your location'}
+                        </p>
+                      </div>
+
+                      <div
+                        onClick={() => setRegion('city')}
+                        className={`p-4 border-2 rounded-lg cursor-pointer ${
+                          region === 'city'
+                            ? 'border-blue-600 bg-blue-50'
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        <RadioGroupItem
+                          value="city"
+                          id="city"
+                          className="mb-2"
+                        />
+                        <label
+                          htmlFor="city"
+                          className="text-gray-900 cursor-pointer block"
+                        >
+                          {t.regionOptions.city}
+                        </label>
+                        <p className="text-gray-600 mt-1 text-sm">
+                          {language === 'TR'
+                            ? 'Tüm İzmirde farklı bölgeleri kapsayan rota'
+                            : 'Route covering different areas of Izmir'}
+                        </p>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                {error && (
+                  <p className="text-red-600 text-sm">{error}</p>
+                )}
+
                 <Button
                   className="w-full gap-2 py-6"
                   onClick={handleGeneratePlan}
-                  disabled={!selectedDate || interests.length === 0}
+                  disabled={
+                    !selectedDate || interests.length === 0 || loading
+                  }
                 >
                   <Sparkles className="w-5 h-5" />
-                  {t.generatePlan}
+                  {loading ? t.generating : t.generatePlan}
                 </Button>
               </CardContent>
             </Card>
           )}
 
           {/* Step 2: Generated Plan */}
-          {step === 2 && planGenerated && (
+          {step === 2 && planGenerated && plan && (
             <div className="space-y-6">
               {/* Action Buttons */}
               <Card>
@@ -338,7 +511,15 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
                     <div>
                       <h2 className="text-gray-900">{t.yourPlan}</h2>
                       <p className="text-gray-600">
-                        {mockPlan.length} {t.stops} • {duration[0]} {language === 'TR' ? 'saat' : 'hours'}
+                        {plan.stops.length} {t.stops} •{' '}
+                        {t.totalDuration}:{' '}
+                        {totalHoursFromPlan}{' '}
+                        {language === 'TR' ? 'saat' : 'hours'}
+                      </p>
+                      <p className="text-gray-600 mt-2 text-sm">
+                        {language === 'TR'
+                          ? plan.summaryTr
+                          : plan.summaryEn}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -361,61 +542,84 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
 
               {/* Plan Timeline */}
               <div className="space-y-4">
-                {mockPlan.map((item, index) => (
-                  <Card key={index} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-6">
-                      <div className="flex gap-4">
-                        <div className="flex flex-col items-center">
-                          <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center flex-shrink-0">
-                            <span>{item.time}</span>
-                          </div>
-                          {index < mockPlan.length - 1 && (
-                            <div className="w-0.5 h-full bg-blue-200 mt-2"></div>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <h3 className="text-gray-900">
-                                {language === 'TR' ? item.place : item.placeEn}
-                              </h3>
-                              <div className="flex items-center gap-2 text-gray-600 mt-1">
-                                <Clock className="w-4 h-4" />
-                                <span>{language === 'TR' ? item.duration : item.durationEn}</span>
-                              </div>
+                {plan.stops
+                  .slice()
+                  .sort((a, b) => a.order - b.order)
+                  .map((item, index) => (
+                    <Card
+                      key={item.placeId + '-' + item.order}
+                      className="hover:shadow-md transition-shadow"
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex gap-4">
+                          <div className="flex flex-col items-center">
+                            <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center flex-shrink-0">
+                              <span>{item.time}</span>
                             </div>
-                            <Badge variant="outline">#{index + 1}</Badge>
+                            {index < plan.stops.length - 1 && (
+                              <div className="w-0.5 h-full bg-blue-200 mt-2" />
+                            )}
                           </div>
-                          <p className="text-gray-600">
-                            {language === 'TR' ? item.description : item.descriptionEn}
-                          </p>
-                          <div className="flex items-center gap-2 mt-3">
-                            <Button variant="outline" size="sm" className="gap-1">
-                              <MapPin className="w-4 h-4" />
-                              {language === 'TR' ? 'Haritada Göster' : 'Show on Map'}
-                            </Button>
-                            <Button variant="link" size="sm" className="gap-1">
-                              {language === 'TR' ? 'Detaylar' : 'Details'}
-                              <ArrowRight className="w-4 h-4" />
-                            </Button>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <h3 className="text-gray-900">
+                                  {language === 'TR'
+                                    ? item.placeNameTr
+                                    : item.placeNameEn}
+                                </h3>
+                                <div className="flex items-center gap-2 text-gray-600 mt-1">
+                                  <Clock className="w-4 h-4" />
+                                  <span>
+                                    {language === 'TR'
+                                      ? item.durationTr
+                                      : item.durationEn}
+                                  </span>
+                                </div>
+                              </div>
+                              <Badge variant="outline">
+                                #{item.order}
+                              </Badge>
+                            </div>
+                            <p className="text-gray-600">
+                              {language === 'TR'
+                                ? item.descriptionTr
+                                : item.descriptionEn}
+                            </p>
+                            <div className="flex items-center gap-2 mt-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                              >
+                                <MapPin className="w-4 h-4" />
+                                {language === 'TR'
+                                  ? 'Haritada Göster'
+                                  : 'Show on Map'}
+                              </Button>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="gap-1"
+                              >
+                                {language === 'TR'
+                                  ? 'Detaylar'
+                                  : 'Details'}
+                                <ArrowRight className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  ))}
               </div>
 
               {/* Create New Plan Button */}
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={() => {
-                  setStep(1);
-                  setPlanGenerated(false);
-                  setSelectedDate('');
-                  setInterests([]);
-                }}
+                onClick={resetPlanner}
               >
                 {t.createNewPlan}
               </Button>
@@ -426,3 +630,4 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
     </div>
   );
 }
+
