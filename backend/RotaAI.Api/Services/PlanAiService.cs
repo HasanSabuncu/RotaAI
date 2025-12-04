@@ -28,15 +28,18 @@ public sealed class PlanAiService
             ?? throw new InvalidOperationException("OPENAI_API_KEY missing");
     }
 
+    // =========================================================
+    //  ANA GİRİŞ NOKTASI
+    // =========================================================
     public async Task<PlanResponseDto> GeneratePlanAsync(PlanRequestDto request)
     {
-        // 1) Kullanıcı konumuna göre mekanları çek
+        // 1) Kullanıcı konumuna göre çevredeki tüm mekanları çek
         var places = await _placesService.GetMuseumsAsync(
             request.StartLat,
             request.StartLng
         );
 
-        // 2) Candidate listeyi kural tabanlı süz
+        // 2) Candidate listeyi akıllı scoring ile süz
         var filtered = FilterCandidates(places, request);
 
         if (filtered.Count == 0)
@@ -51,14 +54,13 @@ public sealed class PlanAiService
         // 4) OpenAI Chat Completions çağrısı
         var body = new
         {
-            model = "gpt-4.1-mini", // istersen "gpt-4.1" / başka model yapabilirsin
+            model = "gpt-4.1-mini",  // istersen gpt-4.1 yaparsın
             messages = new[]
             {
                 new { role = "system", content = sysPrompt },
                 new { role = "user",   content = userPrompt }
             },
-            // JSON formatı zorunlu
-            response_format = new { type = "json_object" }
+            response_format = new { type = "json_object" }   // JSON zorunlu
         };
 
         var httpReq = new HttpRequestMessage(
@@ -96,7 +98,7 @@ public sealed class PlanAiService
         var plan = JsonSerializer.Deserialize<PlanResponseDto>(content, JsonOpts)
                    ?? throw new InvalidOperationException("Plan parse edilemedi.");
 
-        // Güvenlik: çok saçma sonuçlar olursa toparlamak için birkaç basit check
+        // Basit güvenlik / temizlik
         plan.Stops = plan.Stops
             .OrderBy(s => s.Order)
             .Take(20)
@@ -105,13 +107,21 @@ public sealed class PlanAiService
         return plan;
     }
 
+    // =========================================================
+    //  AKILLI FİLTRE / SCORING
+    // =========================================================
     private static List<PlaceListItemDto> FilterCandidates(
         IReadOnlyList<PlaceListItemDto> places,
         PlanRequestDto req)
     {
-        var interestSet = req.Interests.Select(i => i.ToLowerInvariant()).ToHashSet();
+        if (places.Count == 0)
+            return new List<PlaceListItemDto>();
 
-        // interest -> category mapping
+        var interestSet = req.Interests
+            .Select(i => i.ToLowerInvariant())
+            .ToHashSet();
+
+        // interest -> category mapping (backend kategorileri)
         string MapInterestToCategory(string interest) => interest switch
         {
             "history" => "historical",
@@ -138,22 +148,27 @@ public sealed class PlanAiService
         };
 
         // Bölge + yoğunluğa göre mesafe limiti
-        string region = string.IsNullOrWhiteSpace(req.Region) ? "nearby" : req.Region;
+        var region = string.IsNullOrWhiteSpace(req.Region) ? "nearby" : req.Region;
 
         double maxDistKm;
         if (region == "nearby")
         {
-            // KONUMUMA YAKIN MODU
+            // Konumuma yakın modu – aynı ilçe içinde rahatça gidilebilecek mesafe
             maxDistKm = req.Intensity switch
             {
-                "relaxed" => 4,   // çok yakın
-                "intensive" => 10,  // biraz aç
-                _ => 6    // orta tempo
+                // Rahat tempo: yakın ama illa dip dibe değil
+                "relaxed" => 8.0,
+
+                // Yoğun tempo: biraz daha açılabilir
+                "intensive" => 12.0,
+
+                // Orta tempo: yaklaşık 3–10 km bandı
+                _ => 10.0
             };
         }
         else
         {
-            // İZMİR GENELİ MODU
+            // İzmir geneli
             maxDistKm = req.Intensity switch
             {
                 "relaxed" => 12,
@@ -162,33 +177,111 @@ public sealed class PlanAiService
             };
         }
 
-        // Minimum puan: 4.0 ve üzerini tercih et
-        const double minRating = 4.0;
+        // Önce sadece mesafeye göre kaba filtre
+        var baseByDistance = places
+            .Where(p => p.DistanceKm <= maxDistKm)
+            .ToList();
 
-        var q = places
-            .Where(p => p.DistanceKm <= maxDistKm && p.Rating >= minRating);
+        if (baseByDistance.Count == 0)
+            baseByDistance = places.ToList(); // çok kıt bölgede fallback
 
-        if (targetCats.Count > 0)
+        // Rating barajını dinamik ayarla: önce yüksek dene, yetmezse düşür
+        double[] ratingThresholds = { 4.3, 4.1, 3.9, 3.7 };
+        List<PlaceListItemDto> baseQuery = new();
+
+        foreach (var th in ratingThresholds)
         {
-            q = q.Where(p => targetCats.Contains(p.Category));
+            baseQuery = baseByDistance
+                .Where(p => p.Rating >= th)
+                .ToList();
+
+            if (baseQuery.Count >= 6) break; // yeterince aday varsa dur
         }
 
-        // Önce en yüksek puan, sonra en yakın
-        return q
-            .OrderByDescending(p => p.Rating)
-            .ThenBy(p => p.DistanceKm)
-            .Take(maxStops * 3) // GPT’ye fazla aday ver, kendisi seçsin
+        if (baseQuery.Count == 0)
+            baseQuery = baseByDistance; // hâlâ boşsa sadece mesafeye göre devam
+
+        // İlgi alanı kategorisi uygula (varsa)
+        if (targetCats.Count > 0)
+        {
+            var byCat = baseQuery
+                .Where(p => targetCats.Contains(p.Category))
+                .ToList();
+
+            // hiç kalmazsa kategoriyi esnet → kullanıcı boşa 500 hatası almasın
+            if (byCat.Count > 0)
+                baseQuery = byCat;
+        }
+
+        // Güçlü aday: yüksek puan + anlamlı yorum sayısı
+        bool HasDecentReviews(PlaceListItemDto p) => p.UserRatingsTotal >= 20;
+
+        var strong = baseQuery
+            .Where(p => p.Rating >= 4.2 && HasDecentReviews(p))
             .ToList();
+
+        // Yetmezse biraz gevşet
+        if (strong.Count < maxStops * 2)
+        {
+            var medium = baseQuery
+                .Where(p => p.Rating >= 4.0 && p.UserRatingsTotal >= 8)
+                .Where(p => strong.All(s => s.PlaceId != p.PlaceId))
+                .ToList();
+
+            strong.AddRange(medium);
+        }
+
+        var candidates = strong;
+        if (candidates.Count < maxStops)
+        {
+            // Yine de rota dolsun diye kalanları da ekle
+            var rest = baseQuery
+                .Where(p => candidates.All(c => c.PlaceId != p.PlaceId))
+                .ToList();
+            candidates.AddRange(rest);
+        }
+
+        if (candidates.Count == 0)
+            candidates = places.ToList();
+
+        // Skor fonksiyonu: rating + review boost - mesafe cezası
+        double Score(PlaceListItemDto p)
+        {
+            // Review sayısını logaritmik sıkıştır
+            var reviews = Math.Max(p.UserRatingsTotal, 0);
+            double reviewScore = Math.Log10(reviews + 1); // 0–3 arası
+            reviewScore = Math.Min(reviewScore / 3.0, 1.0); // 0–1 arası normalize
+
+            double distancePenalty = region == "nearby"
+                ? p.DistanceKm * 0.15   // yakında rota istiyorsa mesafe önemli
+                : p.DistanceKm * 0.06;
+
+            return (p.Rating * 0.7) + (reviewScore * 0.3) - distancePenalty;
+        }
+
+        // En iyi adayları seç
+        var ranked = candidates
+            .OrderByDescending(Score)
+            .Take(maxStops * 4) // GPT’ye geniş ama kaliteli bir havuz ver
+            .ToList();
+
+        return ranked;
     }
 
+    // =========================================================
+    //  PROMPTLAR
+    // =========================================================
     private static string BuildSystemPrompt()
     {
         return @"
-Sen bir rota planlama yapay zekasısın. Görevin:
+Sen bir rota planlama yapay zekasısın.
+Kendini İzmir’i ve çevresini çok iyi bilen, gezi önerileriyle tanınan
+deneyimli bir yerel rehber gibi düşün.
 
-- Kullanıcının süre, yoğunluk ve ilgi alanlarına göre
-- Sana verilen mekan listesinden
-- Mantıklı ve kaliteli bir gezi planı (durak listesi) oluşturmak.
+Görevin:
+- Kullanıcının süre, yoğunluk, ilgi alanları ve rota bölgesine göre
+- Sana verilen candidatePlaces listesinden
+- Gerçek hayatta mantıklı, kaliteli ve gidilmeye değer bir gezi planı (durak listesi) oluşturmak.
 
 Çıktın KESİNLİKLE şu JSON şemasında olacak:
 
@@ -216,15 +309,51 @@ Sen bir rota planlama yapay zekasısın. Görevin:
   ]
 }
 
-Kurallar:
+KURALLAR (ÇOK ÖNEMLİ):
 
-- Sadece sana verilen candidatePlaces listesindeki placeId’leri kullan.
-- Yüksek puanlı ve popüler mekanları önceliklendir. Düşük puanlı yerleri sadece planı tamamlamak için gerekirse kullan.
-- Ziyaret sırası mantıklı olsun; gereksiz ileri-geri gitme.
-- time alanı 24 saat formatında olsun: ""09:00"", ""11:30"" gibi.
-- totalDurationMinutes, durak sürelerinin toplamına yakın olsun.
-- TR açıklamalarda samimi ama profesyonel, EN açıklamalarda akıcı bir turist rehberi tonu kullan.
-- Cevapta JSON dışında hiçbir metin yazma.
+1) SADECE JSON DÖN
+- Açıklama, cümle, markdown vb. yazma.
+- Sadece yukarıdaki şemaya uyan bir JSON obje döndür.
+
+2) KALİTE KRİTERLERİ
+- candidatePlaces içindeki rating ve userRatingsTotal alanlarını kullan.
+- Çok az yorumlu (ör: 1–2 yorum) ama 5.0 puanlı mekanları zayıf aday olarak düşün.
+- Tercihen hem puanı yüksek hem de yorum sayısı fazla olan yerleri seç.
+- Aynı kategoriye ait sıradan yerlerden çok, bölgeyi temsil eden güçlü, karakteri olan mekanlar seçmeye çalış.
+
+3) ÇEŞİTLİLİK
+- Plan sadece kafelerden veya sadece sanat galerilerinden oluşmasın.
+- Kullanıcının ilgi alanlarına göre:
+  - Eğer history seçiliyse, mümkünse en az 1 tarihi / kültürel durak ekle.
+  - Eğer nature seçiliyse, mümkünse en az 1 park / yeşil alan / doğa noktası ekle.
+  - Eğer gastronomy seçiliyse, en az 1 tane güçlü kafe / yemek durağı ekle.
+- Toplam 3–7 durak arası plan üret (süre ve yoğunluğa göre).
+  - 4–5 saat civarı → 3–4 durak
+  - 6–8 saat civarı → 4–6 durak
+  - Daha uzun ise → 5–7 durak
+
+4) MESAFE ve ROTA MANTIĞI
+- candidatePlaces.distanceKm alanını kullan.
+- region = ""nearby"" ise:
+  - Önceliğin birbirine yakın, yürünebilir duraklar olsun.
+  - Mümkünse 0–2 km arası yerlere ağırlık ver, 4–5 km üstüne sadece gerekirse çık.
+- region = ""city"" ise:
+  - İzmir içinde anlamlı geçişler yap; çok saçma zigzaglı rota oluşturma.
+- Ziyaret sırası mantıklı olsun; kullanıcıyı ileri–geri dolaştırma.
+
+5) ZAMANLAMA
+- İlk durak için mantıklı bir başlangıç saati seç (09:00, 10:00 gibi).
+- Her durak için durationTr / durationEn alanlarında gerçekçi süreler kullan (1–2 saat gibi).
+- totalDurationMinutes, tüm durakların toplamına yakın olsun ve userPrefs.DurationHours ile uyumlu olsun.
+
+6) METİN STİLİ
+- summaryTr: Rotayı bir arkadaşına anlatır gibi, samimi ama profesyonel bir tonda özetle.
+- summaryEn: Akıcı bir turist rehberi gibi yaz.
+- descriptionTr / descriptionEn:
+  - O durak neden güzel, orada ne yapılır, nasıl bir atmosfer var, kısaca anlat.
+  - Puan veya yorum sayısından bahsetme; kullanıcıya “ne hissedeceğini / ne yapacağını” anlat.
+
+Yukarıdaki kurallara kesinlikle uy ve SADECE JSON objesi döndür.
 ";
     }
 
@@ -241,10 +370,13 @@ Kurallar:
             p.NameEn,
             p.Category,
             p.Rating,
+            p.UserRatingsTotal,
             p.DistanceKm,
             p.ImageUrl,
             p.DurationTr,
-            p.DurationEn
+            p.DurationEn,
+            p.Lat,
+            p.Lng
         });
 
         var obj = new

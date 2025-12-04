@@ -57,3 +57,5 @@ public sealed class PlanResponseDto
     public string SummaryEn { get; set; } = "";
     public List<PlanStopDto> Stops { get; set; } = new();
 }
+
+

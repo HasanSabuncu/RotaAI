@@ -1,3 +1,4 @@
+// backend/RotaAI.Api/Models/PlaceDtos.cs
 namespace RotaAI.Api.Models;
 
 public sealed class PlaceListItemDto
@@ -6,8 +7,20 @@ public sealed class PlaceListItemDto
     public string NameTr { get; set; } = default!;
     public string NameEn { get; set; } = default!;
     public string Category { get; set; } = "historical";
+
     public double Rating { get; set; }
+
+    // --- AI için eklediğimiz alanlar ---
+    // Google Place "user_ratings_total" özet değeri
+    public int UserRatingsTotal { get; set; }
+
+    // Kullanıcı konumuna göre hesaplanan mesafe
     public double DistanceKm { get; set; }
+
+    // Mekanın koordinatları (GPT promta da gönderiyoruz)
+    public double Lat { get; set; }
+    public double Lng { get; set; }
+
     public string ImageUrl { get; set; } = default!;
     public string DurationTr { get; set; } = "2 saat";
     public string DurationEn { get; set; } = "2 hours";

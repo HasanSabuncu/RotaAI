@@ -193,8 +193,14 @@ public sealed class GooglePlacesService
                 {
                     var name = r.GetProperty("name").GetString() ?? "";
                     double rating = r.TryGetProperty("rating", out var rt) &&
-                                    rt.ValueKind == JsonValueKind.Number
-                        ? rt.GetDouble()
+                rt.ValueKind == JsonValueKind.Number
+    ? rt.GetDouble()
+    : 0;
+
+                    // user_ratings_total (yoksa 0)
+                    int userRatingsTotal = r.TryGetProperty("user_ratings_total", out var ur) &&
+                                           ur.ValueKind == JsonValueKind.Number
+                        ? ur.GetInt32()
                         : 0;
 
                     if (!r.TryGetProperty("geometry", out var geom) ||
@@ -216,11 +222,15 @@ public sealed class GooglePlacesService
                         NameEn = name,
                         Category = category,
                         Rating = rating,
+                        UserRatingsTotal = userRatingsTotal,
                         DistanceKm = Math.Round(dist, 1),
+                        Lat = lat,
+                        Lng = lng,
                         ImageUrl = imageUrl,
                         DurationTr = "2 saat",
                         DurationEn = "2 hours"
                     };
+
                 }
                 catch
                 {
