@@ -10,14 +10,14 @@ public sealed class PlaceListItemDto
 
     public double Rating { get; set; }
 
-    // --- AI için eklediğimiz alanlar ---
-    // Google Place "user_ratings_total" özet değeri
+    // --- AI için önemli alanlar ---
+    // Google Place "user_ratings_total"
     public int UserRatingsTotal { get; set; }
 
-    // Kullanıcı konumuna göre hesaplanan mesafe
+    // Kullanıcı konumuna göre hesaplanan mesafe (km)
     public double DistanceKm { get; set; }
 
-    // Mekanın koordinatları (GPT promta da gönderiyoruz)
+    // Mekanın koordinatları (rotada kullanmak için)
     public double Lat { get; set; }
     public double Lng { get; set; }
 

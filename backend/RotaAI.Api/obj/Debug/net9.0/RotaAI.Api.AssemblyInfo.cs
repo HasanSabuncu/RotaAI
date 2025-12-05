@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RotaAI.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7fb62578ff5434e435aee67a47af0dca742af478")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+29087465bf8d386f29eb3a7fd1d18c26470f1b6e")]
 [assembly: System.Reflection.AssemblyProductAttribute("RotaAI.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RotaAI.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

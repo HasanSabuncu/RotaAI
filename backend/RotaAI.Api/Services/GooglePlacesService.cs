@@ -1,3 +1,4 @@
+// backend/RotaAI.Api/Services/GooglePlacesService.cs
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Web;
@@ -36,6 +37,55 @@ public sealed class GooglePlacesService
     // Her arama için basit konfig
     private sealed record SearchConfig(string Query, string Category, int MaxPages = 2);
 
+    private enum LocalRegion
+    {
+        Generic = 0,
+        Bornova,
+        MenemenSeyrek,
+        KarsiyakaBostanli,
+        KonakAlsancak,
+        BalcovaInciralti,
+        Buca,
+        Cesme
+    }
+
+    private static LocalRegion DetectRegion(double baseLat, double baseLng)
+    {
+        // Bölge merkezleri (kabaca)
+        var centers = new Dictionary<LocalRegion, (double lat, double lng)>
+        {
+            { LocalRegion.Bornova,        (38.4622, 27.2160) }, // Küçükpark/Büyükpark
+            { LocalRegion.MenemenSeyrek,  (38.5630, 27.0900) }, // Bakırçay / Seyrek
+            { LocalRegion.KarsiyakaBostanli,(38.4688, 27.1097) }, // Bostanlı sahil
+            { LocalRegion.KonakAlsancak,  (38.4237, 27.1428) }, // Kordon / Konak
+            { LocalRegion.BalcovaInciralti,(38.3925, 27.0619) }, // İnciraltı / Teleferik
+            { LocalRegion.Buca,           (38.3734, 27.1603) },
+            { LocalRegion.Cesme,          (38.3264, 26.3056) }
+        };
+
+        double bestDist = double.MaxValue;
+        LocalRegion bestRegion = LocalRegion.Generic;
+
+        foreach (var kv in centers)
+        {
+            var d = DistanceKm(baseLat, baseLng, kv.Value.lat, kv.Value.lng);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestRegion = kv.Key;
+            }
+        }
+
+        // Çok uzaktaysa generic kalsın (örneğin İzmir dışı)
+        if (bestRegion == LocalRegion.Cesme)
+        {
+            // Çeşme için mesafe eşiği daha büyük
+            return bestDist <= 50 ? bestRegion : LocalRegion.Generic;
+        }
+
+        return bestDist <= 15 ? bestRegion : LocalRegion.Generic;
+    }
+
     /// <summary>
     /// Belirli bir Text Search query’si için 1–3 sayfa sonuç çeker (20’şer).
     /// Kullanıcı konumuna göre location+radius ile sınırlar.
@@ -57,7 +107,7 @@ public sealed class GooglePlacesService
             var url = $"https://maps.googleapis.com/maps/api/place/textsearch/json" +
                       $"?query={HttpUtility.UrlEncode(query)}" +
                       $"&location={latStr},{lngStr}" +
-                      $"&radius=12000" + // 12 km yarıçap (istersen 8000 yapabilirsin)
+                      $"&radius=12000" + // 12 km yarıçap (şehir içi için iyi)
                       $"&language=tr&region=tr&key={_key}" +
                       (pageToken != null ? $"&pagetoken={HttpUtility.UrlEncode(pageToken)}" : "");
 
@@ -87,17 +137,19 @@ public sealed class GooglePlacesService
     /// <summary>
     /// İzmir içindeki yerleri, kategori bazlı çoklu query ile çeker.
     /// family / romantic / gastronomy / shopping dahil.
-    /// Kullanıcı Bornova civarındaysa Küçükpark, Homeros Vadisi vb. için ekstra Bornova query’leri ekler.
+    /// Kullanıcının olduğu ilçeye göre ekstra query’ler eklenir.
     /// </summary>
     public async Task<IReadOnlyList<PlaceListItemDto>> GetMuseumsAsync(double? userLat = null, double? userLng = null)
     {
         double baseLat = userLat ?? CenterLat;
         double baseLng = userLng ?? CenterLng;
 
-        // --- ANA QUERY’LER ---
+        var region = DetectRegion(baseLat, baseLng);
+
+        // --- ANA QUERY’LER (tüm İzmir) ---
         var baseConfigs = new List<SearchConfig>
         {
-            // TARİHİ
+            // TARİHİ / KÜLTÜREL
             new("müze izmir", "historical", 3),
             new("arkeoloji müzesi izmir", "historical", 2),
             new("tarihi yerler izmir", "historical", 2),
@@ -137,28 +189,80 @@ public sealed class GooglePlacesService
             new("outlet izmir", "shopping", 2)
         };
 
-        // --- BORNOVA BOOST (Küçükpark, Homeros, Büyükpark, Forum Bornova) ---
-        const double BornovaLat = 38.4622;
-        const double BornovaLng = 27.2160;
+        // --- BÖLGEYE ÖZEL BOOSTLAR ---
 
-        var distToBornova = DistanceKm(baseLat, baseLng, BornovaLat, BornovaLng);
-
-        if (distToBornova < 6.0) // 6 km içinde isen Bornova say
+        if (region == LocalRegion.Bornova)
         {
             baseConfigs.AddRange(new[]
             {
-                // Küçükpark ve civarı kafeler
                 new SearchConfig("küçükpark bornova cafe", "gastronomy", 2),
                 new SearchConfig("bornova küçükpark bar cafe", "gastronomy", 1),
-
-                // Homeros Vadisi
                 new SearchConfig("homeros vadisi izmir doğa yürüyüş", "nature", 2),
-
-                // Bornova Büyükpark
                 new SearchConfig("bornova büyükpark", "nature", 1),
-
-                // Forum Bornova (zaten gelir ama güçlendirelim)
                 new SearchConfig("forum bornova alışveriş merkezi", "shopping", 1)
+            });
+        }
+        else if (region == LocalRegion.MenemenSeyrek)
+        {
+            baseConfigs.AddRange(new[]
+            {
+                // Seyrek / Bakırçay çevresi kahvaltı & kafe
+                new SearchConfig("seyrek menemen kahvaltı mekanı", "gastronomy", 2),
+                new SearchConfig("seyrek menemen cafe", "gastronomy", 2),
+
+                // Gediz Deltası / Kuş Cenneti
+                new SearchConfig("gediz deltası kuş cenneti gözlem alanı", "nature", 2),
+                new SearchConfig("izmir kuş cenneti gözetleme kuleleri", "nature", 2),
+
+                // Menemen merkez park / yürüyüş
+                new SearchConfig("menemen izmir yürüyüş parkı", "nature", 2)
+            });
+        }
+        else if (region == LocalRegion.KarsiyakaBostanli)
+        {
+            baseConfigs.AddRange(new[]
+            {
+                new SearchConfig("bostanlı sahil yürüyüş yolu", "nature", 2),
+                new SearchConfig("bostanlı günbatımı terası", "romantic", 2),
+                new SearchConfig("mavişehir sahil yürüyüş alanı", "nature", 2),
+                new SearchConfig("kıyı kafe bostanlı izmir", "gastronomy", 2),
+            });
+        }
+        else if (region == LocalRegion.KonakAlsancak)
+        {
+            baseConfigs.AddRange(new[]
+            {
+                new SearchConfig("alsancak kordon boyu yürüyüş", "nature", 2),
+                new SearchConfig("izmir saat kulesi konak meydanı", "historical", 2),
+                new SearchConfig("asansör izmir tarihi asansör", "historical", 1),
+                new SearchConfig("kıbrıs şehitleri caddesi cafe bar", "gastronomy", 2),
+            });
+        }
+        else if (region == LocalRegion.BalcovaInciralti)
+        {
+            baseConfigs.AddRange(new[]
+            {
+                new SearchConfig("inciralti sahil yürüyüş yolu", "nature", 2),
+                new SearchConfig("balçova teleferik manzara", "nature", 2),
+                new SearchConfig("inciralti kent ormanı park", "nature", 2),
+            });
+        }
+        else if (region == LocalRegion.Buca)
+        {
+            baseConfigs.AddRange(new[]
+            {
+                new SearchConfig("buca gölet mesire alanı", "nature", 2),
+                new SearchConfig("hasanaga parkı buca", "nature", 2),
+            });
+        }
+        else if (region == LocalRegion.Cesme)
+        {
+            baseConfigs.AddRange(new[]
+            {
+                new SearchConfig("çeşme marina yürüyüş", "nature", 2),
+                new SearchConfig("alaçatı sokakları gezi", "historical", 2),
+                new SearchConfig("alaçatı kahve mekanları", "gastronomy", 2),
+                new SearchConfig("çeşme kalesi", "historical", 1)
             });
         }
 
@@ -193,9 +297,9 @@ public sealed class GooglePlacesService
                 {
                     var name = r.GetProperty("name").GetString() ?? "";
                     double rating = r.TryGetProperty("rating", out var rt) &&
-                rt.ValueKind == JsonValueKind.Number
-    ? rt.GetDouble()
-    : 0;
+                                    rt.ValueKind == JsonValueKind.Number
+                        ? rt.GetDouble()
+                        : 0;
 
                     // user_ratings_total (yoksa 0)
                     int userRatingsTotal = r.TryGetProperty("user_ratings_total", out var ur) &&
@@ -230,7 +334,6 @@ public sealed class GooglePlacesService
                         DurationTr = "2 saat",
                         DurationEn = "2 hours"
                     };
-
                 }
                 catch
                 {

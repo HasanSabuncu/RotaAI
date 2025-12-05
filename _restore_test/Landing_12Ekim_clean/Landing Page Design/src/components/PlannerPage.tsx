@@ -1,5 +1,5 @@
 // frontend/src/components/PlannerPage.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Calendar,
   Clock,
@@ -40,6 +40,23 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
   const [plan, setPlan] = useState<PlanResponseDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Son oluşturulan planın mekanlarını tut (tekrarda aynı yerleri vermemek için)
+  const [lastPlaceIds, setLastPlaceIds] = useState<string[]>([]);
+
+  // Sayfa açılınca localStorage'dan önceki plan mekanlarını al
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = localStorage.getItem('rotaai_last_plan_places');
+    if (raw) {
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) setLastPlaceIds(arr);
+      } catch {
+        // geçersiz json ise umursama
+      }
+    }
+  }, []);
 
   const translations = {
     TR: {
@@ -179,7 +196,8 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
         intensity,
         language,
         date: selectedDate ? new Date(selectedDate).toISOString() : undefined,
-        region
+        region,
+        excludePlaceIds: lastPlaceIds   // önceki plandaki mekanları backend'e gönder
       } as const;
 
       const result = await generatePlan(payload);
@@ -187,6 +205,13 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
       setPlan(result);
       setStep(2);
       setPlanGenerated(true);
+
+      // Yeni planın placeId'lerini sakla ki bir dahaki planda elensin
+      const newIds = result.stops.map((s) => s.placeId).filter(Boolean);
+      setLastPlaceIds(newIds);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rotaai_last_plan_places', JSON.stringify(newIds));
+      }
     } catch (e) {
       console.error(e);
       setError(t.error);
@@ -630,4 +655,3 @@ export function PlannerPage({ language, onNavigate }: PlannerPageProps) {
     </div>
   );
 }
-

@@ -25,6 +25,11 @@ public sealed class PlanRequestDto
     // 'nearby' = konuma yakın, yürünebilir rota
     // 'city'   = İzmir geneli rota
     public string Region { get; set; } = "nearby";
+
+    // Aynı kullanıcı ikinci kez plan oluştururken
+    // önceki plandaki mekanları front-end ExcludePlaceIds ile gönderir,
+    // backend bunları mümkün olduğunca eleyecek.
+    public List<string> ExcludePlaceIds { get; set; } = new();
 }
 
 public sealed class PlanStopDto
@@ -57,5 +62,3 @@ public sealed class PlanResponseDto
     public string SummaryEn { get; set; } = "";
     public List<PlanStopDto> Stops { get; set; } = new();
 }
-
-

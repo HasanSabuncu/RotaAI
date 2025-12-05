@@ -12,6 +12,7 @@ C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.AssemblyInfoI
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.AssemblyInfo.cs
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.csproj.CoreCompileInputs.cache
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.sourcelink.json
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\rjimswa.dswa.cache.json
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\rjsmrazor.dswa.cache.json
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\rjsmcshtml.dswa.cache.json
@@ -25,4 +26,3 @@ C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\refint\RotaAI.Api.dll
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.pdb
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.genruntimeconfig.cache
 C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\ref\RotaAI.Api.dll
-C:\Users\LOQ\RotaAI\backend\RotaAI.Api\obj\Debug\net9.0\RotaAI.Api.sourcelink.json

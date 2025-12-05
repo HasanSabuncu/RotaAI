@@ -54,7 +54,7 @@ public sealed class PlanAiService
         // 4) OpenAI Chat Completions çağrısı
         var body = new
         {
-            model = "gpt-4.1-mini",  // istersen gpt-4.1 yaparsın
+            model = "gpt-4.1-mini",
             messages = new[]
             {
                 new { role = "system", content = sysPrompt },
@@ -117,6 +117,10 @@ public sealed class PlanAiService
         if (places.Count == 0)
             return new List<PlaceListItemDto>();
 
+        var excludeSet = req.ExcludePlaceIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet();
+
         var interestSet = req.Interests
             .Select(i => i.ToLowerInvariant())
             .ToHashSet();
@@ -148,21 +152,16 @@ public sealed class PlanAiService
         };
 
         // Bölge + yoğunluğa göre mesafe limiti
-        var region = string.IsNullOrWhiteSpace(req.Region) ? "nearby" : req.Region;
+        var regionMode = string.IsNullOrWhiteSpace(req.Region) ? "nearby" : req.Region;
 
         double maxDistKm;
-        if (region == "nearby")
+        if (regionMode == "nearby")
         {
             // Konumuma yakın modu – aynı ilçe içinde rahatça gidilebilecek mesafe
             maxDistKm = req.Intensity switch
             {
-                // Rahat tempo: yakın ama illa dip dibe değil
                 "relaxed" => 8.0,
-
-                // Yoğun tempo: biraz daha açılabilir
                 "intensive" => 12.0,
-
-                // Orta tempo: yaklaşık 3–10 km bandı
                 _ => 10.0
             };
         }
@@ -177,16 +176,21 @@ public sealed class PlanAiService
             };
         }
 
-        // Önce sadece mesafeye göre kaba filtre
+        // Önce sadece mesafeye göre kaba filtre + ExcludePlaceIds
         var baseByDistance = places
-            .Where(p => p.DistanceKm <= maxDistKm)
+            .Where(p => p.DistanceKm <= maxDistKm || regionMode == "city")
+            .Where(p => !excludeSet.Contains(p.PlaceId)) // önceki plan mekanlarını at
             .ToList();
 
         if (baseByDistance.Count == 0)
-            baseByDistance = places.ToList(); // çok kıt bölgede fallback
+        {
+            baseByDistance = places
+                .Where(p => !excludeSet.Contains(p.PlaceId))
+                .ToList(); // çok kıt bölgede fallback
+        }
 
         // Rating barajını dinamik ayarla: önce yüksek dene, yetmezse düşür
-        double[] ratingThresholds = { 4.3, 4.1, 3.9, 3.7 };
+        double[] ratingThresholds = { 4.4, 4.2, 4.0, 3.8 };
         List<PlaceListItemDto> baseQuery = new();
 
         foreach (var th in ratingThresholds)
@@ -242,9 +246,11 @@ public sealed class PlanAiService
         }
 
         if (candidates.Count == 0)
-            candidates = places.ToList();
+            candidates = baseByDistance.Count > 0 ? baseByDistance : places.ToList();
 
-        // Skor fonksiyonu: rating + review boost - mesafe cezası
+        // Skor fonksiyonu: rating + review boost - mesafe cezası (+ küçük randomness)
+        var rnd = new Random();
+
         double Score(PlaceListItemDto p)
         {
             // Review sayısını logaritmik sıkıştır
@@ -252,11 +258,17 @@ public sealed class PlanAiService
             double reviewScore = Math.Log10(reviews + 1); // 0–3 arası
             reviewScore = Math.Min(reviewScore / 3.0, 1.0); // 0–1 arası normalize
 
-            double distancePenalty = region == "nearby"
-                ? p.DistanceKm * 0.15   // yakında rota istiyorsa mesafe önemli
+            double distancePenalty = regionMode == "nearby"
+                ? p.DistanceKm * 0.18   // yakında rota istiyorsa mesafe daha önemli
                 : p.DistanceKm * 0.06;
 
-            return (p.Rating * 0.7) + (reviewScore * 0.3) - distancePenalty;
+            // Çok az yorumlu 5.0 mekanlara hafif eksi (fake rating olabilir)
+            double tinySamplePenalty = (p.Rating >= 4.9 && p.UserRatingsTotal < 5) ? 0.3 : 0.0;
+
+            // ufak random jitter (her seferinde aynı liste gelmesin)
+            double jitter = rnd.NextDouble() * 0.15;
+
+            return (p.Rating * 0.7) + (reviewScore * 0.4) - distancePenalty - tinySamplePenalty + jitter;
         }
 
         // En iyi adayları seç
